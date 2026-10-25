@@ -924,7 +924,7 @@ function buildFacadeDetails(group, bd, centroid) {
 // mirrored after the automatic aspect-ratio match below — see loadGlbIntoGroup.
 const BUILDING_GLB_MODELS = {
   미래관: { path: "./data/models/mirae.glb", extraRotationDeg: 180 },
-  "위즈덤 홀": { path: "./data/models/wisdom.glb", extraRotationDeg: 0 },
+  "위즈덤 홀": { path: "./data/models/wisdom.glb", extraRotationDeg: 0, fitMode: "uniform" },
 };
 
 // A real building footprint is almost never aligned to world X/Z — ours here is a parallelogram
@@ -971,15 +971,21 @@ function orientedFootprintDims(footprint) {
 // wall/roof/cornice/window meshes are built first and kept (just hidden) as both an immediate
 // placeholder while the (often multi-MB) model downloads, and a safe fallback if the load fails.
 //
-// The model is fit to the footprint's own true, oriented length/width (see orientedFootprintDims
-// above) rather than a world-axis-aligned box — matching the actual wall-to-wall size instead of
-// an inflated, un-rotatable box is what fixes both the "wrong size/ratio" and "wrong direction"
-// problems at once. Of the 4 ways to line the model's long axis up with the footprint's long axis
-// (2 choices of which model axis is "long", each with a front/back flip), the one whose resulting
-// box best matches the footprint's length:width ratio is kept — this still can't tell front from
-// back on its own (both read identically in a bounding box), so `extraRotationDeg` is there for
-// a manual 180° correction found by eye once the size/direction look right.
-function loadGlbIntoGroup(group, path, bd, extraRotationDeg = 0) {
+// Orientation always comes from the footprint's own true, oriented length/width (see
+// orientedFootprintDims above) rather than a world-axis-aligned box — an inflated, un-rotatable
+// box can never actually line up with an angled building. Of the 4 ways to line the model's long
+// axis up with the footprint's long axis (2 choices of which model axis is "long", each with a
+// front/back flip), the one whose box best matches the footprint's length:width ratio is kept —
+// this still can't tell front from back on its own (both read identically in a bounding box), so
+// `extraRotationDeg` is there for a manual 180° correction found by eye.
+//
+// `fitMode` controls how SIZE is matched: "stretch" (default) scales length and width
+// independently to exactly fill the footprint — precise, but if the model's own proportions
+// differ much from the footprint's, it can look visibly elongated/squashed. "uniform" instead
+// scales every axis by the same factor (from height), keeping the model's real proportions intact
+// at the cost of not perfectly filling the mapped footprint outline — use it when a building looks
+// stretched under "stretch".
+function loadGlbIntoGroup(group, path, bd, extraRotationDeg = 0, fitMode = "stretch") {
   const proceduralChildren = group.children.slice();
   gltfLoader.load(
     path,
@@ -1014,11 +1020,16 @@ function loadGlbIntoGroup(group, path, bd, extraRotationDeg = 0) {
         }
       }
 
-      model.scale.set(
-        best.longAxisIsZ ? width / Math.max(0.001, size.x) : length / Math.max(0.001, size.x),
-        targetH / Math.max(0.001, size.y),
-        best.longAxisIsZ ? length / Math.max(0.001, size.z) : width / Math.max(0.001, size.z)
-      );
+      if (fitMode === "uniform") {
+        const s = targetH / Math.max(0.001, size.y);
+        model.scale.setScalar(s);
+      } else {
+        model.scale.set(
+          best.longAxisIsZ ? width / Math.max(0.001, size.x) : length / Math.max(0.001, size.x),
+          targetH / Math.max(0.001, size.y),
+          best.longAxisIsZ ? length / Math.max(0.001, size.z) : width / Math.max(0.001, size.z)
+        );
+      }
       model.rotation.y = best.rot + (extraRotationDeg * Math.PI) / 180;
 
       const box2 = new THREE.Box3().setFromObject(model);
@@ -1104,7 +1115,7 @@ function buildBuildingMesh(b, destroyable, satRect) {
     const centroid = polygonCentroid(b.footprint);
     buildFacadeDetails(group, b, centroid);
     const glbCfg = BUILDING_GLB_MODELS[b.name];
-    if (glbCfg) loadGlbIntoGroup(group, glbCfg.path, b, glbCfg.extraRotationDeg || 0);
+    if (glbCfg) loadGlbIntoGroup(group, glbCfg.path, b, glbCfg.extraRotationDeg || 0, glbCfg.fitMode || "stretch");
   }
 
   group.userData.color = color;
