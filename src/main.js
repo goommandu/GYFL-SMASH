@@ -1060,10 +1060,17 @@ function loadGlbIntoGroup(group, path, bd, extraRotationDeg = 0, fitMode = "stre
       group.userData.glbModel = model;
 
       if (addWindows) {
+        // Scaling height to match the model's OWN bounding box top (which may include a roof
+        // peak/spire well above the flat wall tops, as this one's gabled tower does) scales the
+        // plain wall sections shorter than bd.height to compensate — so windows sized for the
+        // full bd.height end up floating above the real, shorter wall/roofline. Capping the
+        // window band well below the nominal height keeps it inside the wall regardless of how
+        // much headroom any one model's roof detail eats into.
         const style = styleForBuilding(bd);
-        const winFloors = Math.max(1, Math.min(style.floors || 3, Math.round(bd.height / 4.5)));
-        const winFloorH = bd.height / winFloors;
-        const windows = buildWindowInstances(bd.footprint, centroid, bd.height, style, winFloors, winFloorH, 0.15);
+        const windowCeiling = bd.height * 0.62;
+        const winFloors = Math.max(1, Math.min(style.floors || 3, Math.round(windowCeiling / 4.5)));
+        const winFloorH = windowCeiling / winFloors;
+        const windows = buildWindowInstances(bd.footprint, centroid, windowCeiling, style, winFloors, winFloorH, 0.15);
         if (windows) group.add(windows);
       }
     },
