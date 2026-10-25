@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const SCHOOLS = [
   { id: "goyang_foreign", label: "고양외국어고등학교", file: "./data/goyang_foreign.json" },
@@ -226,6 +227,7 @@ canvasWrap.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xaed4f0);
 const textureLoader = new THREE.TextureLoader();
+const gltfLoader = new GLTFLoader();
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.5, 4000);
 const baseCameraOffset = new THREE.Vector3();
@@ -918,6 +920,61 @@ function buildFacadeDetails(group, bd, centroid) {
   }
 }
 
+// Real modeled buildings (.glb, hand-modeled or AI-generated from the user's reference photos)
+// that fully replace the procedural facade for that one building. Keyed by name; a building not
+// listed here just keeps its procedural look.
+const BUILDING_GLB_MODELS = {
+  미래관: "./data/models/mirae.glb",
+};
+
+// Loads a GLB model in place of a building's procedural facade, once it's ready. The procedural
+// wall/roof/cornice/window meshes are built first and kept (just hidden) as both an immediate
+// placeholder while the (often multi-MB) model downloads, and a safe fallback if the load fails.
+// The model is rescaled per-axis to exactly fill the building's real footprint width/depth and
+// height, then re-centered over the footprint so it lines up with everything else (ground,
+// damage detection, name label) that already works in real-world footprint coordinates.
+function loadGlbIntoGroup(group, path, bd) {
+  const proceduralChildren = group.children.slice();
+  gltfLoader.load(
+    path,
+    (gltf) => {
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const xs = bd.footprint.map((p) => p[0]);
+      const zs = bd.footprint.map((p) => p[1]);
+      const targetW = Math.max(1, Math.max(...xs) - Math.min(...xs));
+      const targetD = Math.max(1, Math.max(...zs) - Math.min(...zs));
+      const targetH = Math.max(1, bd.height);
+      model.scale.set(targetW / Math.max(0.001, size.x), targetH / Math.max(0.001, size.y), targetD / Math.max(0.001, size.z));
+
+      const box2 = new THREE.Box3().setFromObject(model);
+      const center = new THREE.Vector3();
+      box2.getCenter(center);
+      const centroid = polygonCentroid(bd.footprint);
+      model.position.x += centroid.x - center.x;
+      model.position.z += centroid.z - center.z;
+      model.position.y += -box2.min.y;
+
+      model.traverse((o) => {
+        if (o.isMesh) {
+          o.castShadow = true;
+          o.receiveShadow = true;
+        }
+      });
+
+      for (const child of proceduralChildren) child.visible = false;
+      group.add(model);
+      group.userData.glbModel = model;
+    },
+    undefined,
+    (err) => {
+      console.warn(`GLB load failed for ${bd.name} (${path}), keeping procedural building:`, err);
+    }
+  );
+}
+
 function makeFlatShapeMesh(points, color, y, opacity = 1) {
   const shape = footprintToShape(points);
   const geo = new THREE.ShapeGeometry(shape);
@@ -974,6 +1031,8 @@ function buildBuildingMesh(b, destroyable, satRect) {
   if (destroyable) {
     const centroid = polygonCentroid(b.footprint);
     buildFacadeDetails(group, b, centroid);
+    const glbPath = BUILDING_GLB_MODELS[b.name];
+    if (glbPath) loadGlbIntoGroup(group, glbPath, b);
   }
 
   group.userData.color = color;
