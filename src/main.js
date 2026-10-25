@@ -769,7 +769,7 @@ function buildEdgeBand(footprint, centroid, y, bandH, outset, color, roughness) 
 // Real, protruding window bays (recessed frame + glass pane) walked around every footprint edge
 // and stacked per floor, rendered as two InstancedMesh batches (frame, glass) per building so a
 // 10+ building campus with hundreds of window units still costs only ~2 draw calls each.
-function buildWindowInstances(footprint, centroid, height, style, floors, floorH) {
+function buildWindowInstances(footprint, centroid, height, style, floors, floorH, extraOutset = 0) {
   const bayTarget = 3.4;
   const isGlass = style.windowShape === "glass";
   const winW = isGlass ? bayTarget * 0.42 : bayTarget * 0.46;
@@ -791,8 +791,8 @@ function buildWindowInstances(footprint, centroid, height, style, floors, floorH
     const rotY = Math.atan2(nx, nz);
     for (let c = 0; c < cols; c++) {
       const t = (c + 0.5) / cols;
-      const px = p1[0] + ex * t + nx * 0.04;
-      const pz = p1[1] + ez * t + nz * 0.04;
+      const px = p1[0] + ex * t + nx * (0.04 + extraOutset);
+      const pz = p1[1] + ez * t + nz * (0.04 + extraOutset);
       for (let j = 0; j < floors; j++) {
         if (floors > 1 && j === 0 && height / floors < 3) continue;
         const py = floorH * j + floorH * 0.5;
@@ -925,7 +925,7 @@ function buildFacadeDetails(group, bd, centroid) {
 const BUILDING_GLB_MODELS = {
   미래관: { path: "./data/models/mirae.glb", extraRotationDeg: 180 },
   "위즈덤 홀": { path: "./data/models/wisdom.glb", extraRotationDeg: 0, fitMode: "uniform" },
-  비전관: { path: "./data/models/vision.glb", extraRotationDeg: 180, fitMode: "uniform" },
+  비전관: { path: "./data/models/vision.glb", extraRotationDeg: 180, fitMode: "stretch", addWindows: true },
 };
 
 // A real building footprint is almost never aligned to world X/Z — ours here is a parallelogram
@@ -986,7 +986,14 @@ function orientedFootprintDims(footprint) {
 // scales every axis by the same factor (from height), keeping the model's real proportions intact
 // at the cost of not perfectly filling the mapped footprint outline — use it when a building looks
 // stretched under "stretch".
-function loadGlbIntoGroup(group, path, bd, extraRotationDeg = 0, fitMode = "stretch") {
+//
+// `addWindows: true` layers a supplemental band of procedural windows (the same system
+// buildFacadeDetails() uses for fully-procedural buildings) around the building's real footprint,
+// on top of the loaded model — for a source model that only has real detail on one face (an
+// AI-generated "front elevation" model, say) and is otherwise blank on its other walls. Pushed out
+// an extra bit from the wall (glbWindowOutset) since the model's own wall plane is only
+// approximately where the footprint edge says it is, unlike a procedural wall built exactly there.
+function loadGlbIntoGroup(group, path, bd, extraRotationDeg = 0, fitMode = "stretch", addWindows = false) {
   const proceduralChildren = group.children.slice();
   gltfLoader.load(
     path,
@@ -1051,6 +1058,14 @@ function loadGlbIntoGroup(group, path, bd, extraRotationDeg = 0, fitMode = "stre
       for (const child of proceduralChildren) child.visible = false;
       group.add(model);
       group.userData.glbModel = model;
+
+      if (addWindows) {
+        const style = styleForBuilding(bd);
+        const winFloors = Math.max(1, Math.min(style.floors || 3, Math.round(bd.height / 4.5)));
+        const winFloorH = bd.height / winFloors;
+        const windows = buildWindowInstances(bd.footprint, centroid, bd.height, style, winFloors, winFloorH, 0.15);
+        if (windows) group.add(windows);
+      }
     },
     undefined,
     (err) => {
@@ -1116,7 +1131,8 @@ function buildBuildingMesh(b, destroyable, satRect) {
     const centroid = polygonCentroid(b.footprint);
     buildFacadeDetails(group, b, centroid);
     const glbCfg = BUILDING_GLB_MODELS[b.name];
-    if (glbCfg) loadGlbIntoGroup(group, glbCfg.path, b, glbCfg.extraRotationDeg || 0, glbCfg.fitMode || "stretch");
+    if (glbCfg)
+      loadGlbIntoGroup(group, glbCfg.path, b, glbCfg.extraRotationDeg || 0, glbCfg.fitMode || "stretch", !!glbCfg.addWindows);
   }
 
   group.userData.color = color;
