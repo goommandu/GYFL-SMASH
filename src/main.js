@@ -925,7 +925,7 @@ function buildFacadeDetails(group, bd, centroid) {
 const BUILDING_GLB_MODELS = {
   미래관: { path: "./data/models/mirae.glb", extraRotationDeg: 180 },
   "위즈덤 홀": { path: "./data/models/wisdom.glb", extraRotationDeg: 0, fitMode: "uniform" },
-  비전관: { path: "./data/models/vision.glb", extraRotationDeg: 0, fitMode: "uniform" },
+  비전관: { path: "./data/models/vision.glb", extraRotationDeg: 180, fitMode: "uniform" },
 };
 
 // A real building footprint is almost never aligned to world X/Z — ours here is a parallelogram
