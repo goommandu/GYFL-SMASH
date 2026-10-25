@@ -657,7 +657,6 @@ function createBuildingTexture(opts) {
 
 // 창문은 더 이상 평평한 텍스처 그림이 아니라 실제 돌출된 3D 지오메트리(buildWindowInstances)로
 // 만들어지므로, 여기서는 벽의 바탕 재질(벽돌 톤 · 석재 밴드 · 줄눈 · 담쟁이)만 담당한다.
-// 그레이스관과 비전관은 실제로 하나로 붙어있는 건물이라 같은 재질을 공유한다.
 const BUILDING_CUSTOM_TEXTURES = {
   IVY관: createBuildingTexture({
     base: "#8b5a42",
@@ -682,7 +681,6 @@ const BUILDING_CUSTOM_TEXTURES = {
     coursing: { y0: 0.18, y1: 1 },
   }),
 };
-BUILDING_CUSTOM_TEXTURES.그레이스관 = BUILDING_CUSTOM_TEXTURES.비전관;
 
 // Per-building facade style for the real 3D architectural detail (cornice, plinth, window bays,
 // entrance canopy) added in buildFacadeDetails() — one style per named building the user sent
@@ -694,7 +692,6 @@ const BUILDING_STYLES = {
   "위즈덤 홀": { frameColor: 0xe7ddc9, glassColor: 0x3f8f78, windowShape: "glass", floors: 3, corniceColor: 0x9c8f78, canopy: true },
   글로리아관: { frameColor: 0xffffff, glassColor: 0x7398ab, windowShape: "rect", floors: 3, corniceColor: 0xf2ede0, canopy: true },
   비전관: { frameColor: 0xe9e2d2, glassColor: 0x7fa0b0, windowShape: "arch", floors: 3, corniceColor: 0xeee6d3, canopy: true },
-  그레이스관: { frameColor: 0xe9e2d2, glassColor: 0x7fa0b0, windowShape: "arch", floors: 3, corniceColor: 0xeee6d3, canopy: false },
   미래관: { frameColor: 0xeee6d3, glassColor: 0x7fa7bc, windowShape: "arch", floors: 3, corniceColor: 0xeee6d3, canopy: true },
 };
 const DEFAULT_BUILDING_STYLES = [
@@ -926,7 +923,7 @@ function buildFacadeDetails(group, bd, centroid) {
 // eye, in 90° steps) for cases where the model's front and the real building's front still end up
 // mirrored after the automatic aspect-ratio match below — see loadGlbIntoGroup.
 const BUILDING_GLB_MODELS = {
-  미래관: { path: "./data/models/mirae.glb", extraRotationDeg: 0 },
+  미래관: { path: "./data/models/mirae.glb", extraRotationDeg: 180 },
 };
 
 // A real building footprint is almost never aligned to world X/Z — ours here is a parallelogram
@@ -1379,7 +1376,7 @@ function polygonCentroid(points) {
 async function loadSchool(id) {
   loadingEl.classList.remove("hidden");
   const info = SCHOOLS.find((s) => s.id === id);
-  const res = await fetch(info.file);
+  const res = await fetch(info.file, { cache: "no-store" });
   const data = await res.json();
 
   if (sceneGroup) {
