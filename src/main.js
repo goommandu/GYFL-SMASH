@@ -922,18 +922,66 @@ function buildFacadeDetails(group, bd, centroid) {
 
 // Real modeled buildings (.glb, hand-modeled or AI-generated from the user's reference photos)
 // that fully replace the procedural facade for that one building. Keyed by name; a building not
-// listed here just keeps its procedural look.
+// listed here just keeps its procedural look. `extraRotationDeg` is a manual correction (found by
+// eye, in 90° steps) for cases where the model's front and the real building's front still end up
+// mirrored after the automatic aspect-ratio match below — see loadGlbIntoGroup.
 const BUILDING_GLB_MODELS = {
-  미래관: "./data/models/mirae.glb",
+  미래관: { path: "./data/models/mirae.glb", extraRotationDeg: 0 },
 };
+
+// A real building footprint is almost never aligned to world X/Z — ours here is a parallelogram
+// sitting at roughly a 30-40° angle. An axis-aligned min/max bounding box around a rotated
+// rectangle is always bigger than the rectangle itself, in both directions, so fitting a model to
+// that box (as an earlier version of this function did) makes it both the wrong size AND
+// impossible to orient correctly (its sides can never line up with the real, angled walls). This
+// instead measures the footprint's own true length/width along its longest edge's own direction.
+function orientedFootprintDims(footprint) {
+  const n = footprint.length;
+  let bestLen = -1;
+  let dx = 1;
+  let dz = 0;
+  for (let i = 0; i < n; i++) {
+    const p1 = footprint[i];
+    const p2 = footprint[(i + 1) % n];
+    const ex = p2[0] - p1[0];
+    const ez = p2[1] - p1[1];
+    const len = Math.hypot(ex, ez);
+    if (len > bestLen) {
+      bestLen = len;
+      dx = ex / len;
+      dz = ez / len;
+    }
+  }
+  const px = -dz;
+  const pz = dx;
+  let minL = Infinity;
+  let maxL = -Infinity;
+  let minW = Infinity;
+  let maxW = -Infinity;
+  for (const [x, z] of footprint) {
+    const l = x * dx + z * dz;
+    const w = x * px + z * pz;
+    minL = Math.min(minL, l);
+    maxL = Math.max(maxL, l);
+    minW = Math.min(minW, w);
+    maxW = Math.max(maxW, w);
+  }
+  return { length: Math.max(1, maxL - minL), width: Math.max(1, maxW - minW), dx, dz };
+}
 
 // Loads a GLB model in place of a building's procedural facade, once it's ready. The procedural
 // wall/roof/cornice/window meshes are built first and kept (just hidden) as both an immediate
 // placeholder while the (often multi-MB) model downloads, and a safe fallback if the load fails.
-// The model is rescaled per-axis to exactly fill the building's real footprint width/depth and
-// height, then re-centered over the footprint so it lines up with everything else (ground,
-// damage detection, name label) that already works in real-world footprint coordinates.
-function loadGlbIntoGroup(group, path, bd) {
+//
+// The model is fit to the footprint's own true, oriented length/width (see orientedFootprintDims
+// above) rather than a world-axis-aligned box — matching the actual wall-to-wall size instead of
+// an inflated, un-rotatable box is what fixes both the "wrong size/ratio" and "wrong direction"
+// problems at once. Of the 4 ways to line the model's long axis up with the footprint's long axis
+// (2 choices of which model axis is "long", each with a front/back flip), the one whose resulting
+// box best matches the footprint's length:width ratio is kept — this still can't tell front from
+// back on its own (both read identically in a bounding box), so `extraRotationDeg` is there for
+// a manual 180° correction found by eye once the size/direction look right.
+function loadGlbIntoGroup(group, path, bd, extraRotationDeg = 0) {
   const proceduralChildren = group.children.slice();
   gltfLoader.load(
     path,
@@ -942,12 +990,38 @@ function loadGlbIntoGroup(group, path, bd) {
       const box = new THREE.Box3().setFromObject(model);
       const size = new THREE.Vector3();
       box.getSize(size);
-      const xs = bd.footprint.map((p) => p[0]);
-      const zs = bd.footprint.map((p) => p[1]);
-      const targetW = Math.max(1, Math.max(...xs) - Math.min(...xs));
-      const targetD = Math.max(1, Math.max(...zs) - Math.min(...zs));
+
+      const { length, width, dx, dz } = orientedFootprintDims(bd.footprint);
       const targetH = Math.max(1, bd.height);
-      model.scale.set(targetW / Math.max(0.001, size.x), targetH / Math.max(0.001, size.y), targetD / Math.max(0.001, size.z));
+      const baseRot = Math.atan2(dx, dz); // maps local Z+ to world (dx, dz), the footprint's long-edge direction
+
+      // longAxisIsZ: candidates where the model's own local Z size lines up with the footprint's
+      // length (local Z+ along baseRot or baseRot+180); the other two candidates line the model's
+      // local X size up with it instead (baseRot+90 / baseRot+270).
+      const candidates = [
+        { rot: baseRot, longAxisIsZ: true },
+        { rot: baseRot + Math.PI, longAxisIsZ: true },
+        { rot: baseRot + Math.PI / 2, longAxisIsZ: false },
+        { rot: baseRot - Math.PI / 2, longAxisIsZ: false },
+      ];
+      const targetRatio = length / width;
+      let best = candidates[0];
+      let bestDiff = Infinity;
+      for (const c of candidates) {
+        const modelRatio = c.longAxisIsZ ? size.z / size.x : size.x / size.z;
+        const diff = Math.abs(Math.log(modelRatio / targetRatio));
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          best = c;
+        }
+      }
+
+      model.scale.set(
+        best.longAxisIsZ ? width / Math.max(0.001, size.x) : length / Math.max(0.001, size.x),
+        targetH / Math.max(0.001, size.y),
+        best.longAxisIsZ ? length / Math.max(0.001, size.z) : width / Math.max(0.001, size.z)
+      );
+      model.rotation.y = best.rot + (extraRotationDeg * Math.PI) / 180;
 
       const box2 = new THREE.Box3().setFromObject(model);
       const center = new THREE.Vector3();
@@ -1031,8 +1105,8 @@ function buildBuildingMesh(b, destroyable, satRect) {
   if (destroyable) {
     const centroid = polygonCentroid(b.footprint);
     buildFacadeDetails(group, b, centroid);
-    const glbPath = BUILDING_GLB_MODELS[b.name];
-    if (glbPath) loadGlbIntoGroup(group, glbPath, b);
+    const glbCfg = BUILDING_GLB_MODELS[b.name];
+    if (glbCfg) loadGlbIntoGroup(group, glbCfg.path, b, glbCfg.extraRotationDeg || 0);
   }
 
   group.userData.color = color;
