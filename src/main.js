@@ -924,6 +924,7 @@ function buildFacadeDetails(group, bd, centroid) {
 // mirrored after the automatic aspect-ratio match below — see loadGlbIntoGroup.
 const BUILDING_GLB_MODELS = {
   미래관: { path: "./data/models/mirae.glb", extraRotationDeg: 180 },
+  "위즈덤 홀": { path: "./data/models/wisdom.glb", extraRotationDeg: 0 },
 };
 
 // A real building footprint is almost never aligned to world X/Z — ours here is a parallelogram
