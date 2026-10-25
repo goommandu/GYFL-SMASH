@@ -1,0 +1,273 @@
+<title>SMASH 우리학교</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --panel-bg: rgba(15, 17, 23, 0.86);
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --accent: #ff6a2b;
+    --accent-bat: #3b82f6;
+    --text: #f4f4f5;
+    --text-dim: #9ca3af;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #0a0c10; color: var(--text);
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    overflow: hidden;
+  }
+  #canvas-wrap { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  #loading {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #0a0c10; gap: 14px;
+  }
+  #loading .title {
+    font-size: 28px; font-weight: 900; letter-spacing: 1px;
+    color: var(--accent);
+  }
+  #loading .sub { color: var(--text-dim); font-size: 14px; }
+  .spinner {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.15); border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading.hidden { display: none; }
+
+  .panel {
+    z-index: 10;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    backdrop-filter: blur(8px);
+    padding: 12px;
+  }
+
+  #top-bar {
+    top: max(14px, env(safe-area-inset-top, 0px));
+    left: max(14px, env(safe-area-inset-left, 0px));
+    right: max(14px, env(safe-area-inset-right, 0px));
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 10px; background: none; border: none; backdrop-filter: none;
+    padding: 0; pointer-events: none;
+  }
+  #top-bar > * { pointer-events: auto; }
+
+  #brand {
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 12px 14px;
+  }
+  #brand .logo {
+    font-size: 20px; font-weight: 900; letter-spacing: 0.5px; line-height: 1.15;
+  }
+  #brand .logo .smash { color: var(--accent); }
+  #brand select {
+    background: #1a1d24; color: var(--text); border: 1px solid var(--panel-border);
+    border-radius: 8px; padding: 6px 8px; font-size: 13px; font-weight: 600;
+    max-width: 220px;
+  }
+
+  #score-box {
+    padding: 10px 18px; text-align: right; min-width: 150px;
+  }
+  #score-box .label { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; }
+  #score-box .value { font-size: 26px; font-weight: 900; color: var(--accent); font-variant-numeric: tabular-nums; }
+  #score-box .stat { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+  #weapon-panel {
+    position: fixed; z-index: 10;
+    left: max(14px, env(safe-area-inset-left, 0px));
+    bottom: max(14px, env(safe-area-inset-bottom, 0px));
+    display: flex; gap: 8px; padding: 10px;
+    max-width: calc(100vw - 28px); overflow-x: auto;
+  }
+  .weapon-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    width: 72px; padding: 10px 6px; border-radius: 10px; cursor: pointer;
+    background: #1a1d24; border: 2px solid transparent; color: var(--text);
+    transition: all 0.12s ease; user-select: none;
+  }
+  .weapon-btn .icon { font-size: 22px; }
+  .weapon-btn .name { font-size: 12px; font-weight: 700; }
+  .weapon-btn .key { font-size: 10px; color: var(--text-dim); }
+  .weapon-btn:hover { background: #22262f; }
+  .weapon-btn.active[data-weapon="look"] { border-color: #9ca3af; background: rgba(156,163,175,0.15); }
+  .weapon-btn.active[data-weapon="bomb"] { border-color: var(--accent); background: rgba(255,106,43,0.15); }
+  .weapon-btn.active[data-weapon="bat"] { border-color: var(--accent-bat); background: rgba(59,130,246,0.15); }
+  .weapon-btn.active[data-weapon="laser"] { border-color: #22d3ee; background: rgba(34,211,238,0.15); }
+  .weapon-btn.active[data-weapon="meteor"] { border-color: #f97316; background: rgba(249,115,22,0.15); }
+  .weapon-btn.active[data-weapon="earthquake"] { border-color: #a78bfa; background: rgba(167,139,250,0.15); }
+  .weapon-btn.active[data-weapon="nuke"] { border-color: #4ade80; background: rgba(74,222,128,0.15); }
+
+  #groundzero-banner {
+    position: fixed; top: 38%; left: 50%; transform: translate(-50%, -50%) scale(0.92);
+    z-index: 35; text-align: center; pointer-events: none;
+    font-size: 22px; font-weight: 900; color: #ff3b30; letter-spacing: 1px;
+    text-shadow: 0 0 10px rgba(255,59,48,0.8), 0 2px 6px rgba(0,0,0,0.6);
+    opacity: 0; transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+  #groundzero-banner.show {
+    opacity: 1; transform: translate(-50%, -50%) scale(1);
+    animation: gz-flash 0.5s steps(2) infinite;
+  }
+  @keyframes gz-flash { 50% { opacity: 0.45; } }
+  @media (max-width: 640px) {
+    #groundzero-banner { font-size: 15px; }
+  }
+
+  #screen-flash {
+    position: fixed; inset: 0; z-index: 45; pointer-events: none;
+    background: #fff; opacity: 0;
+  }
+
+  #action-panel {
+    position: fixed; z-index: 10;
+    right: max(14px, env(safe-area-inset-right, 0px));
+    bottom: max(14px, env(safe-area-inset-bottom, 0px));
+    display: flex; gap: 8px; padding: 10px;
+  }
+  .action-btn {
+    padding: 10px 14px; border-radius: 10px; cursor: pointer;
+    background: #1a1d24; border: 1px solid var(--panel-border); color: var(--text);
+    font-size: 13px; font-weight: 600; white-space: nowrap;
+  }
+  .action-btn:hover { background: #22262f; }
+  .action-btn:disabled { opacity: 0.4; cursor: default; }
+
+  #hint {
+    position: fixed; left: 50%; bottom: 100px; transform: translateX(-50%);
+    z-index: 10; padding: 8px 16px; font-size: 12.5px; color: var(--text-dim);
+    background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 20px;
+    white-space: nowrap; pointer-events: none;
+  }
+
+  #credit {
+    position: fixed; bottom: 4px; left: 50%; transform: translateX(-50%);
+    font-size: 10px; color: #55595f; z-index: 9; text-align: center; pointer-events: none;
+  }
+
+  #destroy-banner {
+    position: fixed; top: max(90px, calc(14px + env(safe-area-inset-top, 0px) + 76px));
+    left: 50%; z-index: 30; max-width: min(92vw, 560px);
+    padding: 10px 20px; border-radius: 12px; text-align: center;
+    font-size: 15px; font-weight: 800; line-height: 1.3; color: #fff8ef;
+    background: linear-gradient(180deg, rgba(40, 20, 10, 0.92), rgba(20, 10, 5, 0.88));
+    border: 1px solid rgba(255, 150, 80, 0.4);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+    opacity: 0; transform: translate(-50%, -8px) scale(0.96);
+    transition: opacity 0.22s ease, transform 0.22s ease;
+  }
+  #destroy-banner.show {
+    opacity: 1; transform: translate(-50%, 0) scale(1);
+  }
+
+  .building-label {
+    position: fixed; z-index: 8; transform: translate(-50%, -100%);
+    font-size: 11px; font-weight: 700; color: #fff;
+    background: rgba(10, 12, 16, 0.55); padding: 2px 7px; border-radius: 6px;
+    white-space: nowrap; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  }
+
+  @media (max-width: 640px) {
+    #destroy-banner { font-size: 13px; padding: 8px 16px; top: max(80px, calc(14px + env(safe-area-inset-top, 0px) + 64px)); }
+  }
+
+  @media (max-width: 640px) {
+    #score-box { min-width: auto; padding: 8px 12px; }
+    #score-box .value { font-size: 20px; }
+    #brand { padding: 8px 10px; }
+    #brand .logo { font-size: 16px; }
+    .weapon-btn { width: 58px; padding: 8px 4px; }
+    .weapon-btn .icon { font-size: 18px; }
+    .weapon-btn .name { font-size: 10.5px; }
+    #hint { font-size: 11px; padding: 6px 12px; bottom: 144px; max-width: 90vw; white-space: normal; text-align: center; }
+    .action-btn { padding: 8px 10px; font-size: 12px; }
+    #action-panel { left: 14px; right: 14px; bottom: 90px; justify-content: center; }
+  }
+</style>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <div class="title">SMASH 우리학교</div>
+    <div class="sub">캠퍼스를 불러오는 중...</div>
+  </div>
+
+  <div id="canvas-wrap"></div>
+
+  <div id="top-bar">
+    <div class="panel" id="brand">
+      <div class="logo"><span class="smash">SMASH</span> 우리학교</div>
+      <select id="school-select"></select>
+    </div>
+    <div class="panel" id="score-box">
+      <div class="label">SCORE</div>
+      <div class="value" id="score-value">0</div>
+      <div class="stat" id="building-stat">건물 0 / 0</div>
+    </div>
+  </div>
+
+  <div id="hint">지도를 클릭해서 건물을 부숴보세요 · 드래그로 회전 · 휠로 확대</div>
+
+  <div id="destroy-banner"></div>
+
+  <div class="panel" id="weapon-panel">
+    <div class="weapon-btn active" data-weapon="look">
+      <div class="icon">👀</div>
+      <div class="name">둘러보기</div>
+      <div class="key">0</div>
+    </div>
+    <div class="weapon-btn" data-weapon="bomb">
+      <div class="icon">💣</div>
+      <div class="name">수류탄</div>
+      <div class="key">1</div>
+    </div>
+    <div class="weapon-btn" data-weapon="bat">
+      <div class="icon">🏏</div>
+      <div class="name">빠따</div>
+      <div class="key">2</div>
+    </div>
+    <div class="weapon-btn" data-weapon="laser">
+      <div class="icon">✂️</div>
+      <div class="name">레이저</div>
+      <div class="key">3</div>
+    </div>
+    <div class="weapon-btn" data-weapon="meteor">
+      <div class="icon">☄️</div>
+      <div class="name">운석</div>
+      <div class="key">4</div>
+    </div>
+    <div class="weapon-btn" data-weapon="earthquake">
+      <div class="icon">🫨</div>
+      <div class="name">지진</div>
+      <div class="key">5</div>
+    </div>
+    <div class="weapon-btn" data-weapon="nuke">
+      <div class="icon">☢️</div>
+      <div class="name">핵폭탄</div>
+      <div class="key">6</div>
+    </div>
+  </div>
+
+  <div id="groundzero-banner"></div>
+  <div id="screen-flash"></div>
+
+  <div class="panel" id="action-panel">
+    <div class="action-btn" id="btn-undo">되돌리기 (Ctrl+Z)</div>
+    <div class="action-btn" id="btn-restore">전부 복구</div>
+  </div>
+
+  <div id="credit">건물 데이터 © OpenStreetMap 기여자 (ODbL) · 위성 이미지 © Esri World Imagery · 학교와 관계없는 비공식 팬 프로젝트 · 주변 건물은 장식용이며 부술 수 없습니다</div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="./src/main.js?v=devcache18"></script>
