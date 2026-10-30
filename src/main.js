@@ -9,13 +9,9 @@ const SCHOOLS = [
 
 const GRAVITY = -24;
 const DEBRIS_DESPAWN_DIST_MULT = 1.8;
-const FUSE_MS = 500;
 const THROW_MS = 550; // 수류탄이 던져진 지점까지 날아가는 시간
-const NUKE_FUSE_MS = 1100; // 그라운드 제로 경고를 읽을 시간을 주는, 더 긴 점화 지연
 const EARTHQUAKE_DURATION_MS = 3000;
 const EARTHQUAKE_TICK_MS = 700;
-const LASER_SWEEP_MS = 1400;
-const LASER_ROTATIONS = 2;
 
 // per-weapon tuning: radius (m), outward force range, upward bias range, score multiplier,
 // VFX colors, max chunk grid per axis when a building breaks apart, camera-shake strength/duration.
@@ -23,22 +19,22 @@ const LASER_ROTATIONS = 2;
 // weapons need more than one hit to fully bring a building down instead of one-shotting it.
 // 수류탄/빠따는 기본 근접 무기라 위력을 낮췄고, 운석/지진/핵폭탄은 그보다 세게 유지했습니다.
 const WEAPONS = {
-  bomb: { radius: 15, damage: 1, forceMin: 4, forceMax: 8, upMin: 3, upMax: 6, scoreMult: 0.85, flashColor: 0xffb060, ringColor: 0xffcc66, chunkCap: 2, shakeMag: 0.4, shakeDur: 0.2, freeze: 30 },
-  meteor: { radius: 30, damage: 2, forceMin: 16, forceMax: 28, upMin: 11, upMax: 18, scoreMult: 1.35, flashColor: 0xff7a33, ringColor: 0xffa550, chunkCap: 3, shakeMag: 0.85, shakeDur: 0.32, freeze: 55 },
-  nuke: { radius: 65, damage: 3, forceMin: 24, forceMax: 42, upMin: 15, upMax: 26, scoreMult: 2.2, flashColor: 0xffffff, ringColor: 0xfff2b0, chunkCap: 4, shakeMag: 1.8, shakeDur: 0.65, freeze: 120 },
+  bomb: { radius: 10, damage: 1, forceMin: 3, forceMax: 6, upMin: 2, upMax: 4, scoreMult: 0.6, flashColor: 0xffb060, ringColor: 0xffcc66, chunkCap: 2, shakeMag: 0.25, shakeDur: 0.16, freeze: 20 },
+  meteor: { radius: 30, damage: 2, forceMin: 16, forceMax: 28, upMin: 11, upMax: 18, scoreMult: 1.35, flashColor: 0xff7a33, ringColor: 0xffa550, chunkCap: 4, shakeMag: 0.85, shakeDur: 0.32, freeze: 55 },
+  nuke: { radius: 65, damage: 3, forceMin: 24, forceMax: 42, upMin: 15, upMax: 26, scoreMult: 2.2, flashColor: 0xffffff, ringColor: 0xfff2b0, chunkCap: 5, shakeMag: 1.8, shakeDur: 0.65, freeze: 120 },
 };
-const EARTHQUAKE = { radius: 42, damage: 1, forceMin: 3, forceMax: 7, upMin: 2, upMax: 5, scoreMult: 0.75, chunkCap: 2, shakeMag: 1.3, wobbleRadius: 110 };
-const LASER = { radius: 55, damage: 1, forceMin: 8, forceMax: 14, upMin: 3, upMax: 7, scoreMult: 1.05, chunkCap: 2, shakeMag: 0.18, shakeDur: 0.12 };
-const BAT_DAMAGE = 1;
+const EARTHQUAKE = { radius: 42, damage: 1, forceMin: 3, forceMax: 7, upMin: 2, upMax: 5, scoreMult: 0.75, chunkCap: 3, shakeMag: 2.2, wobbleRadius: 110 };
+// 레이저는 더 이상 한 점에서 회전하는 무기가 아니라, 사용자가 드래그한 경로를 따라 궤도에서
+// 빔이 내려와 훑고 지나가는 방식이라 "radius"는 그 빔이 닿는 폭(= 경로 주변 피해 반경)을 뜻한다.
+const LASER = { hitRadius: 10, speed: 85, damage: 1, forceMin: 8, forceMax: 14, upMin: 3, upMax: 7, scoreMult: 1.05, chunkCap: 3, shakeMag: 0.22 };
 
 const HINTS = {
   look: "드래그·휠로 자유롭게 둘러보세요 · 무기를 고르면 공격이 시작됩니다",
   bomb: "지도를 클릭하면 수류탄을 던져요",
-  bat: "건물을 클릭하면 빠따로 휘둘러 쳐요",
-  laser: "지도를 클릭하면 그 자리에서 레이저가 회전하며 베어요",
+  laser: "클릭한 채로 드래그하면 그 경로를 따라 궤도 레이저가 내리꽂혀요",
   meteor: "지도를 클릭하면 하늘에서 운석이 떨어져요",
   earthquake: "지도를 클릭하면 그 주변이 한동안 흔들리며 무너져요",
-  nuke: "지도를 클릭하면 그라운드 제로가 표시되고 거대한 폭발이 일어나요",
+  nuke: "지도를 클릭하면 폭격기가 지나가며 핵폭탄을 투하해요",
 };
 
 // ---------- Korean particle helpers ----------
@@ -75,12 +71,6 @@ const FLAVORS = {
     "무지막지한 폭탄", "정체불명의 초강력 폭탄", "규격 외 화력의 폭탄", "자비 없는 폭탄",
     "눈 깜짝할 새 터진 폭탄", "위력이 미쳐버린 폭탄", "통제 불능의 폭탄",
     "벽돌도 가루로 만든 폭탄", "시험기간 스트레스가 응축된 폭탄",
-  ],
-  bat: [
-    "홈런왕급 스윙의 배트", "믿을 수 없는 악력의 배트", "메이저리거 뺨치는 배트",
-    "분노가 실린 묵직한 배트", "건물째 날려버린 배트", "상상초월 괴력의 배트",
-    "풀스윙으로 작렬한 배트", "야구 역사에 남을 배트", "중력을 무시한 배트",
-    "한 방에 담장을 넘긴 배트", "근육이 터질 듯한 배트", "어깨가 빠질 듯한 스윙의 배트",
   ],
   laser: [
     "빛보다 빠른 레이저", "눈부신 초고출력 레이저", "건물을 두부처럼 썬 레이저",
@@ -152,6 +142,8 @@ const weaponButtons = Array.from(document.querySelectorAll(".weapon-btn"));
 const hintEl = document.getElementById("hint");
 const destroyBannerEl = document.getElementById("destroy-banner");
 const groundZeroBannerEl = document.getElementById("groundzero-banner");
+const dangerBannerEl = document.getElementById("danger-banner");
+const canvasWrapEl = document.getElementById("canvas-wrap");
 const screenFlashEl = document.getElementById("screen-flash");
 
 function screenFlash(color, peakOpacity, fadeMs) {
@@ -312,23 +304,6 @@ function playBoom(intensity) {
   osc.stop(now + dur + 0.05);
 }
 
-function playBat() {
-  const ctx = ensureAudio();
-  if (!ctx) return;
-  const now = ctx.currentTime;
-  const osc = ctx.createOscillator();
-  osc.type = "triangle";
-  osc.frequency.setValueAtTime(320, now);
-  osc.frequency.exponentialRampToValueAtTime(90, now + 0.18);
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(0.55, now + 0.008);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
-  osc.connect(gain).connect(ctx.destination);
-  osc.start(now);
-  osc.stop(now + 0.22);
-}
-
 function playLaserZap() {
   const ctx = ensureAudio();
   if (!ctx) return;
@@ -366,6 +341,52 @@ function playRumble(dur) {
   noise.stop(now + dur + 0.05);
 }
 
+// a low, slightly detuned two-oscillator drone that swells in then fades out — read as an
+// aircraft engine passing by, without needing a real sample
+function playPlaneDrone(dur) {
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.22, now + dur * 0.3);
+  gain.gain.setValueAtTime(0.22, now + dur * 0.6);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+  gain.connect(ctx.destination);
+  for (const [freq, detune] of [[120, 0], [124, -6]]) {
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(freq, now);
+    osc.detune.setValueAtTime(detune, now);
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(380, now);
+    osc.connect(filter).connect(gain);
+    osc.start(now);
+    osc.stop(now + dur + 0.1);
+  }
+}
+
+// a rising-then-wailing siren tone for the earthquake warning banner
+function playSiren() {
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(220, now);
+  osc.frequency.linearRampToValueAtTime(520, now + 0.35);
+  osc.frequency.linearRampToValueAtTime(220, now + 0.7);
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.3, now + 0.05);
+  gain.gain.setValueAtTime(0.3, now + 0.65);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.75);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.8);
+}
+
 // ---------- game state ----------
 let buildings = []; // {id, name, mesh, footprint, height, area, centroid, alive, destroyable}
 let debris = [];
@@ -382,6 +403,7 @@ let wobbles = []; // {mesh, startTime, duration}
 let nameLabels = []; // {el, building}
 let shakeState = { time: 0, duration: 0, magnitude: 0 };
 let freezeUntil = 0;
+let activeNukeCutscene = null; // {phase, plane, bomb, start, dropAt, point, ...}
 
 const raycaster = new THREE.Raycaster();
 
@@ -1435,12 +1457,14 @@ async function loadSchool(id) {
   messageShowing = false;
   destroyBannerEl.classList.remove("show");
   groundZeroBannerEl.classList.remove("show");
+  dangerBannerEl.classList.remove("show");
   activeQuake = null;
-  if (activeSweep) {
-    if (sceneGroup) scene.remove(activeSweep.group);
-    if (activeSweep.light) scene.remove(activeSweep.light);
-    activeSweep = null;
+  if (activeOrbital) {
+    if (sceneGroup) scene.remove(activeOrbital.group);
+    if (activeOrbital.light) scene.remove(activeOrbital.light);
+    activeOrbital = null;
   }
+  activeNukeCutscene = cleanupNukeCutscene(activeNukeCutscene);
 
   sceneGroup = new THREE.Group();
   buildings = [];
@@ -1647,6 +1671,9 @@ function triggerShake(magnitude, duration) {
 }
 
 // ---------- destruction ----------
+// Walks a coarse chunkCap³ grid over the building like before, but each coarse cell now shatters
+// into 2-3 small, irregularly-sized/rotated shards instead of becoming one neat box — a hit reads
+// as real rubble bursting apart rather than a handful of clean blocks calving off.
 function fragmentBuilding(b, chunkCap) {
   const minX = Math.min(...b.footprint.map((p) => p[0]));
   const maxX = Math.max(...b.footprint.map((p) => p[0]));
@@ -1655,9 +1682,9 @@ function fragmentBuilding(b, chunkCap) {
   const w = Math.max(2, maxX - minX);
   const d = Math.max(2, maxZ - minZ);
 
-  const nx = Math.min(chunkCap, Math.max(1, Math.round(w / 7)));
-  const nz = Math.min(chunkCap, Math.max(1, Math.round(d / 7)));
-  const ny = Math.min(chunkCap, Math.max(1, Math.round(b.height / 7)));
+  const nx = Math.min(chunkCap, Math.max(1, Math.round(w / 6)));
+  const nz = Math.min(chunkCap, Math.max(1, Math.round(d / 6)));
+  const ny = Math.min(chunkCap, Math.max(1, Math.round(b.height / 6)));
 
   const cellW = w / nx;
   const cellD = d / nz;
@@ -1668,20 +1695,26 @@ function fragmentBuilding(b, chunkCap) {
   for (let ix = 0; ix < nx; ix++) {
     for (let iz = 0; iz < nz; iz++) {
       for (let iy = 0; iy < ny; iy++) {
-        const shrink = 0.8 + Math.random() * 0.16;
-        const geo = new THREE.BoxGeometry(cellW * shrink, cellH * shrink, cellD * shrink);
-        const mat = new THREE.MeshStandardMaterial({
-          color: color.clone().offsetHSL(0, 0, (Math.random() - 0.5) * 0.08),
-          roughness: 0.9,
-        });
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        const cx = minX + cellW * (ix + 0.5) + (Math.random() - 0.5) * cellW * 0.2;
-        const cz = minZ + cellD * (iz + 0.5) + (Math.random() - 0.5) * cellD * 0.2;
-        const cy = cellH * (iy + 0.5);
-        mesh.position.set(cx, cy, cz);
-        chunks.push({ mesh, half: new THREE.Vector3((cellW * shrink) / 2, (cellH * shrink) / 2, (cellD * shrink) / 2) });
+        const cx0 = minX + cellW * ix;
+        const cz0 = minZ + cellD * iz;
+        const cy0 = cellH * iy;
+        const shardCount = 2 + Math.floor(Math.random() * 2);
+        for (let s = 0; s < shardCount; s++) {
+          const sw = (cellW / 1.6) * (0.5 + Math.random() * 0.7);
+          const sh = (cellH / 1.6) * (0.5 + Math.random() * 0.7);
+          const sd = (cellD / 1.6) * (0.5 + Math.random() * 0.7);
+          const geo = new THREE.BoxGeometry(sw, sh, sd);
+          const mat = new THREE.MeshStandardMaterial({
+            color: color.clone().offsetHSL(0, 0, (Math.random() - 0.5) * 0.1),
+            roughness: 0.92,
+          });
+          const mesh = new THREE.Mesh(geo, mat);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          mesh.rotation.set(Math.random() * 0.7, Math.random() * Math.PI, Math.random() * 0.7);
+          mesh.position.set(cx0 + Math.random() * cellW, cy0 + Math.random() * cellH, cz0 + Math.random() * cellD);
+          chunks.push({ mesh, half: new THREE.Vector3(sw / 2, sh / 2, sd / 2) });
+        }
       }
     }
   }
@@ -1724,46 +1757,25 @@ function damageBuilding(b, dmg, origin, cfg) {
     sceneGroup.add(c.mesh);
     const dir = new THREE.Vector3().subVectors(c.mesh.position, origin);
     dir.y += 6;
+    // a bit of random jitter on top of the straight "away from the blast" direction so a burst of
+    // same-origin shards doesn't all fly out along identical rays
+    dir.x += (Math.random() - 0.5) * 4;
+    dir.z += (Math.random() - 0.5) * 4;
     if (dir.lengthSq() < 0.01) dir.set((Math.random() - 0.5) || 1, 1, (Math.random() - 0.5) || 1);
     dir.normalize();
-    const force = cfg.forceMin + Math.random() * (cfg.forceMax - cfg.forceMin);
+    const force = (cfg.forceMin + Math.random() * (cfg.forceMax - cfg.forceMin)) * (0.85 + Math.random() * 0.45);
     const vel = dir.multiplyScalar(force);
     vel.y += cfg.upMin + Math.random() * (cfg.upMax - cfg.upMin);
     const angVel = new THREE.Vector3(
-      (Math.random() - 0.5) * 8,
-      (Math.random() - 0.5) * 8,
-      (Math.random() - 0.5) * 8
+      (Math.random() - 0.5) * 14,
+      (Math.random() - 0.5) * 14,
+      (Math.random() - 0.5) * 14
     );
     const rec = { mesh: c.mesh, vel, angVel, half: c.half, settled: false, flyOff: false };
     debris.push(rec);
     spawned.push(rec);
   }
   return { spawned, fullyDestroyed, hpBefore, hpAfter: b.hp };
-}
-
-function destroyBuildingBat(b, camPos) {
-  if (!b.alive) return null;
-  b.alive = false;
-  const centroid3 = new THREE.Vector3(b.centroid.x, b.height / 2, b.centroid.z);
-  const dir = new THREE.Vector3().subVectors(centroid3, camPos);
-  dir.y = 0;
-  if (dir.lengthSq() < 0.001) dir.set(1, 0, 0);
-  dir.normalize();
-  const vel = dir.multiplyScalar(32 + Math.random() * 8);
-  vel.y = 20 + Math.random() * 8;
-  const angVel = new THREE.Vector3(
-    (Math.random() - 0.5) * 10,
-    (Math.random() - 0.5) * 10,
-    (Math.random() - 0.5) * 10
-  );
-  const minX = Math.min(...b.footprint.map((p) => p[0]));
-  const maxX = Math.max(...b.footprint.map((p) => p[0]));
-  const minZ = Math.min(...b.footprint.map((p) => p[1]));
-  const maxZ = Math.max(...b.footprint.map((p) => p[1]));
-  const half = new THREE.Vector3((maxX - minX) / 2, b.height / 2, (maxZ - minZ) / 2);
-  const rec = { mesh: b.mesh, vel, angVel, half, settled: false, flyOff: true, isOriginal: true };
-  debris.push(rec);
-  return [rec];
 }
 
 function removeDebrisRecords(recs) {
@@ -2027,7 +2039,7 @@ function nearestBuildingName(point) {
 // 수류탄: 카메라 앞에서 포물선을 그리며 날아가 착지하면 바로 터진다 (투척형 무기)
 function throwGrenade(point) {
   const mat = new THREE.MeshStandardMaterial({ color: 0x2c2c2c, roughness: 0.45 });
-  const geo = new THREE.SphereGeometry(1.7, 14, 14);
+  const geo = new THREE.SphereGeometry(0.9, 12, 12);
   const mesh = new THREE.Mesh(geo, mat);
   mesh.castShadow = true;
   const dir = new THREE.Vector3();
@@ -2039,15 +2051,62 @@ function throwGrenade(point) {
   projectiles.push({ kind: "throw", mesh, start: start.clone(), end: point.clone(), t0: performance.now(), duration: THROW_MS });
 }
 
-// 핵폭탄: 점화 지연 동안 바닥에 빨간 위험 반경과 그라운드 제로 경고문을 띄워둔다
+// 핵폭탄: 폭격기가 화면을 가로질러 날아오다 목표 상공에서 폭탄을 투하하는 컷신.
+// 그라운드 제로 경고/위험 반경은 비행기가 접근하는 동안부터 미리 떠 있는다.
+function buildPlaneMesh() {
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x4a4f57, roughness: 0.55, metalness: 0.35 });
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(1.5, 8.5, 4, 8), bodyMat);
+  body.rotation.z = Math.PI / 2;
+  group.add(body);
+  const wingMat = new THREE.MeshStandardMaterial({ color: 0x3a3e45, roughness: 0.65 });
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.3, 15), wingMat);
+  wing.position.y = -0.1;
+  group.add(wing);
+  const tailWing = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.2, 5), wingMat);
+  tailWing.position.set(-4, 0.5, 0);
+  group.add(tailWing);
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.2, 0.3), wingMat);
+  fin.position.set(-4, 1.5, 0);
+  group.add(fin);
+  group.traverse((o) => {
+    if (o.isMesh) o.castShadow = true;
+  });
+  return group;
+}
+
+// 재로딩/전부복구 중간에 컷신이 끊길 때를 위한 공통 정리 함수 — 어느 단계에서 호출되어도 안전하게
+// 비행기/폭탄/위험 반경/경고문을 전부 치운다.
+function cleanupNukeCutscene(cs) {
+  if (!cs) return null;
+  if (cs.plane) {
+    sceneGroup.remove(cs.plane);
+    cs.plane.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material && o.material.dispose) o.material.dispose();
+    });
+  }
+  if (cs.bomb) {
+    sceneGroup.remove(cs.bomb);
+    cs.bomb.geometry.dispose();
+    cs.bomb.material.dispose();
+  }
+  if (cs.ring) {
+    sceneGroup.remove(cs.ring);
+    cs.ring.geometry.dispose();
+    cs.ring.material.dispose();
+  }
+  if (cs.fill) {
+    sceneGroup.remove(cs.fill);
+    cs.fill.geometry.dispose();
+    cs.fill.material.dispose();
+  }
+  groundZeroBannerEl.classList.remove("show");
+  return null;
+}
+
 function placeNukeFuse(point) {
-  const mat = new THREE.MeshStandardMaterial({ color: 0x335522, roughness: 0.4, emissive: 0x113300 });
-  const geo = new THREE.SphereGeometry(3.2, 16, 16);
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.copy(point);
-  mesh.position.y += 3.2;
-  mesh.castShadow = true;
-  sceneGroup.add(mesh);
+  if (activeNukeCutscene) return;
 
   const radius = WEAPONS.nuke.radius;
   const ringGeo = new THREE.RingGeometry(radius * 0.97, radius, 64);
@@ -2068,7 +2127,83 @@ function placeNukeFuse(point) {
   groundZeroBannerEl.textContent = `⚠ 그라운드 제로 : ${name || "미상 구역"} ⚠`;
   groundZeroBannerEl.classList.add("show");
 
-  projectiles.push({ kind: "fuse", mesh, ring, fill, point: point.clone(), start: performance.now(), weaponKey: "nuke", duration: NUKE_FUSE_MS });
+  const planeAltitude = sceneRadius * 0.55 + 70;
+  const span = sceneRadius * 2.4;
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  const startX = point.x - (dir * span) / 2;
+  const endX = point.x + (dir * span) / 2;
+  const flightDur = (span / 140) * 1000; // 대략 140 m/s로 화면을 가로지르는 시간
+
+  const plane = buildPlaneMesh();
+  plane.position.set(startX, planeAltitude, point.z);
+  plane.rotation.y = dir > 0 ? 0 : Math.PI;
+  sceneGroup.add(plane);
+  playPlaneDrone(flightDur / 1000 + 0.3);
+
+  activeNukeCutscene = {
+    plane,
+    bomb: null,
+    ring,
+    fill,
+    point: point.clone(),
+    startX,
+    endX,
+    planeAltitude,
+    start: performance.now(),
+    flightDur,
+    dropFrac: 0.5, // 비행기가 목표 상공(point.x)을 지나는 순간 투하
+    bombStart: 0,
+    bombFromY: 0,
+    bombDur: 850,
+  };
+}
+
+// 매 프레임 비행→투하→낙하 단계를 진행시키고, 폭탄이 땅에 닿는 순간 기존 핵폭발 연출(explodeAt)로
+// 넘긴다.
+function updateNukeCutscene() {
+  const cs = activeNukeCutscene;
+  if (!cs) return;
+  const now = performance.now();
+
+  if (cs.plane) {
+    const t = Math.min(1, (now - cs.start) / cs.flightDur);
+    cs.plane.position.x = cs.startX + (cs.endX - cs.startX) * t;
+    cs.plane.position.y = cs.planeAltitude + Math.sin(t * Math.PI) * 4;
+
+    if (t >= cs.dropFrac && !cs.bomb) {
+      const mat = new THREE.MeshStandardMaterial({ color: 0x2c2c2c, roughness: 0.4, metalness: 0.2 });
+      const geo = new THREE.CylinderGeometry(0.6, 0.85, 3.4, 10);
+      const bomb = new THREE.Mesh(geo, mat);
+      bomb.position.set(cs.point.x, cs.planeAltitude, cs.point.z);
+      bomb.rotation.x = Math.PI / 2;
+      bomb.castShadow = true;
+      sceneGroup.add(bomb);
+      cs.bomb = bomb;
+      cs.bombStart = now;
+      cs.bombFromY = cs.planeAltitude;
+    }
+
+    if (t >= 1) {
+      sceneGroup.remove(cs.plane);
+      cs.plane.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material && o.material.dispose) o.material.dispose();
+      });
+      cs.plane = null;
+    }
+  }
+
+  if (cs.bomb) {
+    const bt = Math.min(1, (now - cs.bombStart) / cs.bombDur);
+    const ease = bt * bt;
+    cs.bomb.position.y = cs.bombFromY + (cs.point.y - cs.bombFromY) * ease;
+    cs.bomb.rotation.z += 0.2;
+    if (bt >= 1) {
+      const point = cs.point;
+      activeNukeCutscene = cleanupNukeCutscene(cs);
+      explodeAt(point, "nuke");
+    }
+  }
 }
 
 function placeMeteor(point) {
@@ -2094,31 +2229,7 @@ function updateProjectiles() {
   const now = performance.now();
   for (let i = projectiles.length - 1; i >= 0; i--) {
     const p = projectiles[i];
-    if (p.kind === "fuse") {
-      const dur = p.duration || FUSE_MS;
-      const t = (now - p.start) / dur;
-      const pulse = 1 + Math.sin(t * Math.PI * 8) * 0.18;
-      p.mesh.scale.setScalar(pulse);
-      if (p.ring) p.ring.material.opacity = 0.5 + Math.sin(t * Math.PI * 10) * 0.35;
-      if (t >= 1) {
-        sceneGroup.remove(p.mesh);
-        p.mesh.geometry.dispose();
-        p.mesh.material.dispose();
-        if (p.ring) {
-          sceneGroup.remove(p.ring);
-          p.ring.geometry.dispose();
-          p.ring.material.dispose();
-        }
-        if (p.fill) {
-          sceneGroup.remove(p.fill);
-          p.fill.geometry.dispose();
-          p.fill.material.dispose();
-        }
-        groundZeroBannerEl.classList.remove("show");
-        projectiles.splice(i, 1);
-        explodeAt(p.point, p.weaponKey);
-      }
-    } else if (p.kind === "throw") {
+    if (p.kind === "throw") {
       const t = Math.min(1, (now - p.t0) / p.duration);
       const pos = p.start.clone().lerp(p.end, t);
       pos.y += Math.sin(t * Math.PI) * 9;
@@ -2147,45 +2258,6 @@ function updateProjectiles() {
   }
 }
 
-const BAT_CHIP_CFG = { chunkCap: 1, forceMin: 8, forceMax: 14, upMin: 5, upMax: 9 };
-
-function batHit(b) {
-  if (!b.alive) return;
-  const hpBefore = b.hp;
-  const willFinish = hpBefore - BAT_DAMAGE <= 0;
-
-  let spawned, fullyDestroyed, hpAfter;
-  if (willFinish) {
-    // finishing blow: launch the whole remaining building away as one piece
-    b.hp = 0;
-    fullyDestroyed = true;
-    hpAfter = 0;
-    spawned = destroyBuildingBat(b, camera.position);
-  } else {
-    const res = damageBuilding(b, BAT_DAMAGE, camera.position, BAT_CHIP_CFG);
-    if (!res) return;
-    spawned = res.spawned;
-    fullyDestroyed = res.fullyDestroyed;
-    hpAfter = res.hpAfter;
-  }
-
-  const sc = Math.round(scoreForBuilding(b) * ((hpBefore - hpAfter) / b.maxHp));
-  score += sc;
-  updateScoreUI();
-  updateBuildingStat();
-  spawnFloatingScore(new THREE.Vector3(b.centroid.x, b.height + 6, b.centroid.z), sc);
-  undoStack.push({ hits: [{ id: b.id, hpBefore }], scoreDelta: sc, debrisRecs: spawned });
-  updateUndoBtn();
-  queueDestroyMessage(buildDestroyMessage("bat", b.name, fullyDestroyed, hpAfter, b.maxHp));
-  triggerShake(willFinish ? 0.35 : 0.2, willFinish ? 0.18 : 0.12);
-  freezeUntil = performance.now() + 30;
-  playBat();
-  const impactPoint = new THREE.Vector3(b.centroid.x, b.height * 0.4, b.centroid.z);
-  spawnFlash(impactPoint, 0xfff2cc, willFinish ? 16 : 10, 260);
-  spawnParticleBurst(impactPoint, { color: 0xe8dcc8, count: willFinish ? 16 : 12, speed: 13, spread: 1.6, size: 0.42, life: 550, upBias: 1.2 });
-  fovPunch(willFinish ? 4 : 2, 160);
-}
-
 // The quake plays out over EARTHQUAKE_DURATION_MS instead of landing all its damage in one
 // instant: updateQuake() below delivers one damage pulse per EARTHQUAKE_TICK_MS, so buildings
 // crumble gradually while the ground keeps shaking, rather than vanishing the moment it's clicked.
@@ -2196,6 +2268,9 @@ function triggerEarthquake(point) {
   activeQuake = { point: point.clone(), start: performance.now(), nextTick: performance.now() };
   triggerShake(EARTHQUAKE.shakeMag, EARTHQUAKE_DURATION_MS / 1000);
   playRumble(EARTHQUAKE_DURATION_MS / 1000 + 0.3);
+  playSiren();
+  dangerBannerEl.textContent = "⚠ 지진 발생 ⚠";
+  dangerBannerEl.classList.add("show");
   wobbleNearbyBackdrop(point);
 }
 
@@ -2257,6 +2332,7 @@ function updateQuake() {
   const now = performance.now();
   if (now - activeQuake.start >= EARTHQUAKE_DURATION_MS) {
     activeQuake = null;
+    dangerBannerEl.classList.remove("show");
     return;
   }
   if (now >= activeQuake.nextTick) {
@@ -2281,81 +2357,88 @@ function updateWobbles() {
   }
 }
 
-// ---------- laser: rotating sweep from a clicked point ----------
-let activeSweep = null; // {center, start, group, hitIds}
+// ---------- laser: orbital strike along a dragged path ----------
+// 더 이상 한 점에서 회전하는 무기가 아니라, 사용자가 지도 위에 드래그한 경로를 따라 궤도에서
+// 빔이 내리꽂히며 훑고 지나가는 방식. 시작점에서 끝점까지 LASER.speed(m/s)로 이동하며, 지나가는
+// 길목에 있는 건물에 데미지를 준다.
+let activeOrbital = null; // {start, end, skyY, dur, startTime, group, beam, halo, groundGlow, light, hitIds, lastSpark}
 
-function startLaserSweep(point) {
-  if (activeSweep) return;
+function startOrbitalLaser(startPoint, endPoint) {
+  if (activeOrbital) return;
+  const pathLen = Math.max(4, startPoint.distanceTo(endPoint));
+  const dur = Math.max(450, (pathLen / LASER.speed) * 1000);
+  const skyY = sceneRadius * 1.2 + 140;
+
   const group = new THREE.Group();
-  group.position.set(point.x, 2.4, point.z);
-  // a slim bright core plus a wider, dimmer halo behind it reads as a glowing beam rather than a
-  // flat bar
-  const haloGeo = new THREE.BoxGeometry(LASER.radius, 1.1, 1.4);
-  haloGeo.translate(LASER.radius / 2, 0, 0);
-  const haloMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.25 });
-  group.add(new THREE.Mesh(haloGeo, haloMat));
-  const beamGeo = new THREE.BoxGeometry(LASER.radius, 0.3, 0.55);
-  beamGeo.translate(LASER.radius / 2, 0, 0);
-  const beamMat = new THREE.MeshBasicMaterial({ color: 0x8be9f0, transparent: true, opacity: 0.95 });
-  group.add(new THREE.Mesh(beamGeo, beamMat));
-  const glowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 });
-  const glow = new THREE.Mesh(new THREE.SphereGeometry(1.5, 12, 12), glowMat);
-  group.add(glow);
-  const tipGlowMat = new THREE.MeshBasicMaterial({ color: 0xcdfbff, transparent: true, opacity: 0.9 });
-  const tipGlow = new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 10), tipGlowMat);
-  tipGlow.position.x = LASER.radius;
-  group.add(tipGlow);
+  const haloMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.22, side: THREE.DoubleSide });
+  const halo = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 1, 14, 1, true), haloMat);
+  group.add(halo);
+  const beamMat = new THREE.MeshBasicMaterial({ color: 0x9df3ff, transparent: true, opacity: 0.92, side: THREE.DoubleSide });
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 1, 12, 1, true), beamMat);
+  group.add(beam);
+  const groundGlowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 });
+  const groundGlow = new THREE.Mesh(new THREE.SphereGeometry(2, 12, 12), groundGlowMat);
+  group.add(groundGlow);
   sceneGroup.add(group);
-  const centerLight = new THREE.PointLight(0x22d3ee, 4, LASER.radius * 1.2, 2);
-  centerLight.position.copy(point);
-  centerLight.position.y += 2;
-  sceneGroup.add(centerLight);
-  activeSweep = { center: point.clone(), start: performance.now(), group, hitIds: new Set(), light: centerLight, lastSpark: 0 };
-  triggerShake(LASER.shakeMag, LASER_SWEEP_MS / 1000);
+
+  const light = new THREE.PointLight(0x22d3ee, 5, 60, 2);
+  sceneGroup.add(light);
+
+  activeOrbital = {
+    start: startPoint.clone(),
+    end: endPoint.clone(),
+    skyY,
+    dur,
+    startTime: performance.now(),
+    group,
+    halo,
+    beam,
+    groundGlow,
+    light,
+    hitIds: new Set(),
+    lastSpark: 0,
+  };
+  triggerShake(LASER.shakeMag, dur / 1000);
   playLaserZap();
 }
 
-function updateLaserSweep() {
-  if (!activeSweep) return;
+function updateOrbitalLaser() {
+  if (!activeOrbital) return;
   const now = performance.now();
-  const t = (now - activeSweep.start) / LASER_SWEEP_MS;
-  if (t >= 1) {
-    sceneGroup.remove(activeSweep.group);
-    sceneGroup.remove(activeSweep.light);
-    activeSweep.group.traverse((o) => {
-      if (o.geometry) o.geometry.dispose();
-      if (o.material && o.material.dispose) o.material.dispose();
+  const t = Math.min(1, (now - activeOrbital.startTime) / activeOrbital.dur);
+  const cur = activeOrbital.start.clone().lerp(activeOrbital.end, t);
+  const h = Math.max(1, activeOrbital.skyY - cur.y);
+
+  activeOrbital.beam.scale.y = h;
+  activeOrbital.beam.position.set(cur.x, cur.y + h / 2, cur.z);
+  activeOrbital.halo.scale.y = h;
+  activeOrbital.halo.position.set(cur.x, cur.y + h / 2, cur.z);
+  activeOrbital.groundGlow.position.set(cur.x, cur.y + 1, cur.z);
+  activeOrbital.light.position.set(cur.x, cur.y + 3, cur.z);
+
+  if (now - activeOrbital.lastSpark > 45) {
+    activeOrbital.lastSpark = now;
+    spawnParticleBurst(new THREE.Vector3(cur.x, cur.y + 0.5, cur.z), {
+      color: 0xbdf4ff,
+      count: 3,
+      speed: 4,
+      spread: 0.9,
+      size: 0.3,
+      life: 300,
+      gravityMult: 0.12,
+      upBias: 0.7,
     });
-    activeSweep = null;
-    return;
-  }
-
-  const sweepAngle = t * Math.PI * 2 * LASER_ROTATIONS;
-  activeSweep.group.rotation.y = sweepAngle;
-  // rotation.y = φ sends the beam's local +X (its pointing direction) to world angle -φ
-  // (atan2(dz,dx) convention), so that's what each building's bearing is compared against.
-  const beamWorldAngle = -sweepAngle;
-  const center = activeSweep.center;
-
-  if (now - activeSweep.lastSpark > 55) {
-    activeSweep.lastSpark = now;
-    const tip = new THREE.Vector3(center.x + Math.cos(beamWorldAngle) * LASER.radius, 2.4, center.z + Math.sin(beamWorldAngle) * LASER.radius);
-    spawnParticleBurst(tip, { color: 0xbdf4ff, count: 2, speed: 3, spread: 0.6, size: 0.25, life: 260, gravityMult: 0.1, upBias: 0.6 });
   }
 
   const hits = [];
   let totalScore = 0;
   const allSpawned = [];
   for (const b of buildings) {
-    if (!b.alive || !b.destroyable || activeSweep.hitIds.has(b.id)) continue;
-    const dx = b.centroid.x - center.x;
-    const dz = b.centroid.z - center.z;
-    if (Math.hypot(dx, dz) > LASER.radius) continue;
-    const targetAngle = Math.atan2(dz, dx);
-    const diff = Math.atan2(Math.sin(targetAngle - beamWorldAngle), Math.cos(targetAngle - beamWorldAngle));
-    if (Math.abs(diff) > 0.12) continue;
-    activeSweep.hitIds.add(b.id);
-    const res = damageBuilding(b, LASER.damage, center, LASER);
+    if (!b.alive || !b.destroyable || activeOrbital.hitIds.has(b.id)) continue;
+    const dist = Math.hypot(b.centroid.x - cur.x, b.centroid.z - cur.z);
+    if (dist > LASER.hitRadius) continue;
+    activeOrbital.hitIds.add(b.id);
+    const res = damageBuilding(b, LASER.damage, cur, LASER);
     if (res) {
       hits.push({ id: b.id, hpBefore: res.hpBefore });
       allSpawned.push(...res.spawned);
@@ -2367,9 +2450,19 @@ function updateLaserSweep() {
     score += totalScore;
     updateScoreUI();
     updateBuildingStat();
-    spawnFloatingScore(new THREE.Vector3(center.x, 14, center.z), totalScore);
+    spawnFloatingScore(new THREE.Vector3(cur.x, 14, cur.z), totalScore);
     undoStack.push({ hits, scoreDelta: totalScore, debrisRecs: allSpawned });
     updateUndoBtn();
+  }
+
+  if (t >= 1) {
+    sceneGroup.remove(activeOrbital.group);
+    sceneGroup.remove(activeOrbital.light);
+    activeOrbital.group.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material && o.material.dispose) o.material.dispose();
+    });
+    activeOrbital = null;
   }
 }
 
@@ -2456,12 +2549,14 @@ function restoreAll() {
   }
   projectiles = [];
   groundZeroBannerEl.classList.remove("show");
+  dangerBannerEl.classList.remove("show");
   activeQuake = null;
-  if (activeSweep) {
-    scene.remove(activeSweep.group);
-    if (activeSweep.light) scene.remove(activeSweep.light);
-    activeSweep = null;
+  if (activeOrbital) {
+    scene.remove(activeOrbital.group);
+    if (activeOrbital.light) scene.remove(activeOrbital.light);
+    activeOrbital = null;
   }
+  activeNukeCutscene = cleanupNukeCutscene(activeNukeCutscene);
   undoStack = [];
   score = 0;
   updateScoreUI();
@@ -2496,20 +2591,8 @@ function raycastGroundPoint(ev) {
   return hits.length ? hits[0].point : null;
 }
 
-// each building's mesh is a Group (wall + roof); a raycast hit lands on one of those children,
-// so walk up to find the building record it belongs to.
-function findBuildingByObject(obj) {
-  let o = obj;
-  while (o) {
-    const b = buildings.find((x) => x.mesh === o);
-    if (b) return b;
-    o = o.parent;
-  }
-  return null;
-}
-
 renderer.domElement.addEventListener("click", (ev) => {
-  if (activeWeapon === "look") return;
+  if (activeWeapon === "look" || activeWeapon === "laser") return;
   const point = raycastGroundPoint(ev);
   if (!point) return;
 
@@ -2525,23 +2608,55 @@ renderer.domElement.addEventListener("click", (ev) => {
   } else if (activeWeapon === "earthquake") {
     ensureAudio();
     triggerEarthquake(point);
-  } else if (activeWeapon === "laser") {
-    ensureAudio();
-    startLaserSweep(point);
-  } else if (activeWeapon === "bat") {
-    ensureAudio();
-    raycaster.setFromCamera(ndcFromEvent(ev), camera);
-    const targets = buildings.filter((b) => b.alive && b.destroyable).map((b) => b.mesh);
-    const hits = raycaster.intersectObjects(targets, true);
-    if (hits.length) {
-      const b = findBuildingByObject(hits[0].object);
-      if (b) batHit(b);
-    }
   }
 });
 
+// ---------- laser: click-and-drag to draw the orbital strike's path ----------
+let laserDrag = null; // {startPoint, line}
+
+function clearLaserDragLine() {
+  if (!laserDrag) return;
+  sceneGroup.remove(laserDrag.line);
+  laserDrag.line.geometry.dispose();
+  laserDrag.line.material.dispose();
+  laserDrag = null;
+}
+
+renderer.domElement.addEventListener("pointerdown", (ev) => {
+  if (activeWeapon !== "laser") return;
+  const point = raycastGroundPoint(ev);
+  if (!point) return;
+  ensureAudio();
+  controls.enabled = false;
+  const p0 = point.clone();
+  p0.y += 0.6;
+  const lineGeo = new THREE.BufferGeometry().setFromPoints([p0, p0.clone()]);
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.9 });
+  const line = new THREE.Line(lineGeo, lineMat);
+  sceneGroup.add(line);
+  laserDrag = { startPoint: point.clone(), line };
+});
+
+renderer.domElement.addEventListener("pointermove", (ev) => {
+  if (!laserDrag) return;
+  const point = raycastGroundPoint(ev);
+  if (!point) return;
+  const pos = laserDrag.line.geometry.attributes.position;
+  pos.setXYZ(1, point.x, point.y + 0.6, point.z);
+  pos.needsUpdate = true;
+});
+
+window.addEventListener("pointerup", (ev) => {
+  if (!laserDrag) return;
+  const point = raycastGroundPoint(ev) || laserDrag.startPoint;
+  const start = laserDrag.startPoint;
+  clearLaserDragLine();
+  controls.enabled = true;
+  startOrbitalLaser(start, point);
+});
+
 window.addEventListener("keydown", (ev) => {
-  const map = { 0: "look", 1: "bomb", 2: "bat", 3: "laser", 4: "meteor", 5: "earthquake", 6: "nuke" };
+  const map = { 0: "look", 1: "bomb", 2: "laser", 3: "meteor", 4: "earthquake", 5: "nuke" };
   if (map[ev.key]) setWeapon(map[ev.key]);
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "z") {
     ev.preventDefault();
@@ -2571,6 +2686,13 @@ function animate() {
     camera.position.x += (Math.random() - 0.5) * m;
     camera.position.y += (Math.random() - 0.5) * m * 0.6;
     camera.position.z += (Math.random() - 0.5) * m;
+    // the camera jitter above moves the 3D view; this additionally shoves the whole rendered
+    // canvas around in 2D screen space on top of it, which reads as a much more unmistakable
+    // "the screen itself is shaking" effect than camera jitter alone (most noticeable during
+    // 지진, whose shakeMag is by far the largest).
+    canvasWrapEl.style.transform = `translate(${(Math.random() - 0.5) * m * 2.2}px, ${(Math.random() - 0.5) * m * 2.2}px)`;
+  } else if (canvasWrapEl.style.transform) {
+    canvasWrapEl.style.transform = "";
   }
 
   updateProjectiles();
@@ -2579,7 +2701,8 @@ function animate() {
   updateWobbles();
   updateNameLabels();
   updateQuake();
-  updateLaserSweep();
+  updateOrbitalLaser();
+  updateNukeCutscene();
 
   renderer.render(scene, camera);
 }
